@@ -157,29 +157,51 @@ bool EspIdfWiFiBackend::tryConnect(const char* ssid, const char* password) {
     wcfg.sta.pmf_cfg.capable  = true;
     wcfg.sta.pmf_cfg.required = false;
 
+    // Drop any previous association cleanly. We zero connecting_ FIRST so the
+    // STA_DISCONNECTED event that the WiFi driver fires for the old link does
+    // not get misclassified as a failure of the new connect we are about to
+    // start (the disconnect handler only flags connectFailed_ while
+    // connecting_ is true). Then wait for the driver to actually leave the
+    // connected state before reconfiguring -- without this, the wifi driver
+    // logs "wifi:sta is connecting, return error" and the new connect attempt
+    // can get stuck in a half-baked state during re-provisioning.
+    connecting_ = false;
+    esp_wifi_disconnect();
+    for (int i = 0; i < 50 && connected_.load(); ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
     if (esp_wifi_set_config(WIFI_IF_STA, &wcfg) != ESP_OK) return false;
 
-    // Force a fresh attempt -- if a previous association exists, drop it first.
     connected_     = false;
     gotIp_         = false;
     connectFailed_ = false;
     connecting_    = true;
-    esp_wifi_disconnect();
     if (esp_wifi_connect() != ESP_OK) {
         connecting_ = false;
         return false;
     }
 
+    // Wait loop. Allow exactly one retry on connect failure -- some routers
+    // reject the first probe right after a fresh disconnect. After two
+    // consecutive failures we give up rather than cascade-retry until the
+    // deadline, which previously kept the lib unresponsive for the full
+    // 12 s connectTimeoutMs even when the real outcome was already known.
+    bool retried = false;
     const int64_t deadline = esp_timer_get_time() + static_cast<int64_t>(opts_.connectTimeoutMs) * 1000;
     while (esp_timer_get_time() < deadline) {
-        if (connectFailed_.load()) {
-            // Retry once -- some routers reject the first probe right after disconnect.
-            connectFailed_ = false;
-            esp_wifi_connect();
-        }
         if (connected_.load() && gotIp_.load()) {
             connecting_ = false;
             return true;
+        }
+        if (connectFailed_.load()) {
+            connectFailed_ = false;
+            if (retried) {
+                connecting_ = false;
+                return false;
+            }
+            retried = true;
+            esp_wifi_connect();
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
