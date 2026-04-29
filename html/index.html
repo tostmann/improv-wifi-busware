@@ -151,6 +151,56 @@
       font-size: 0.82rem;
     }
     footer a { color: inherit; }
+
+    /* Diagnostic log panel — captures everything the install flow does so a
+       failed provisioning attempt is debuggable without devtools.            */
+    .diag {
+      margin-top: 2.5rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      overflow: hidden;
+    }
+    .diag-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0.9rem;
+      background: #eef1f6;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .diag-head strong { font-weight: 600; }
+    .diag-head .muted { color: var(--fg-soft); margin-left: 0.5rem; font-size: 0.78rem; }
+    .diag-head button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--fg);
+      padding: 0.25rem 0.6rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+    .diag-head button:hover { filter: brightness(0.97); }
+    #diag-log {
+      margin: 0;
+      padding: 0.75rem 0.9rem;
+      max-height: 26em;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      color: #2a3340;
+      background: #fafbfd;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #diag-log .lvl-info  { color: #1f5d2c; }
+    #diag-log .lvl-warn  { color: #87580d; }
+    #diag-log .lvl-error { color: #9a1f1f; font-weight: 600; }
+    #diag-log .lvl-event { color: #005f87; }
+    #diag-log .ts        { color: var(--fg-soft); }
   </style>
 </head>
 <body>
@@ -220,6 +270,23 @@
       </div>
     </section>
 
+    <section class="diag">
+      <div class="diag-head">
+        <span>
+          <strong>Diagnose-Log</strong>
+          <span class="muted">
+            ESP-Web-Tools-Events, Konsolen-Output und Promise-Rejections.
+            Aktiv ab Seitenaufruf.
+          </span>
+        </span>
+        <span>
+          <button id="diag-copy">Kopieren</button>
+          <button id="diag-clear">Leeren</button>
+        </span>
+      </div>
+      <pre id="diag-log"></pre>
+    </section>
+
     <footer>
       Quelle: <a href="https://github.com/tostmann/improv-wifi-busware">tostmann/improv-wifi-busware</a>
     </footer>
@@ -256,6 +323,113 @@
         }
         strip.innerHTML = '<strong>Hinweis:</strong> ' + why.join(' ');
       }
+    })();
+
+    /* ----------------------------------------------------------------------
+       Diagnose-Log: capture everything that's relevant to debugging a failed
+       Improv-Serial provisioning so the user does not need to open devtools.
+       Hooks into:
+         - console.{log,info,warn,error,debug}        (general output)
+         - window 'error' + 'unhandledrejection'      (catches the
+           "Uncaught (in promise) UNABLE_TO_CONNECT" path the user reported)
+         - <esp-web-install-button> 'state-changed'   (state machine)
+       ---------------------------------------------------------------------- */
+    (function () {
+      var logEl = document.getElementById('diag-log');
+      if (!logEl) return;
+      var t0 = performance.now();
+
+      function fmt(v) {
+        if (v === undefined) return 'undefined';
+        if (v === null) return 'null';
+        if (typeof v === 'string') return v;
+        if (v instanceof Error) {
+          return v.name + ': ' + v.message + (v.stack ? '\n' + v.stack : '');
+        }
+        try { return JSON.stringify(v, null, 2); }
+        catch (e) { return String(v); }
+      }
+
+      function append(level, parts) {
+        var line = parts.map(fmt).join(' ');
+        var ts = ((performance.now() - t0) / 1000).toFixed(3);
+        var span = document.createElement('span');
+        span.className = 'lvl-' + level;
+        span.textContent = '[' + ts.padStart(7, ' ') + 's ' + level.toUpperCase() + '] ' + line + '\n';
+        logEl.appendChild(span);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      // Mirror console output into the panel without losing the original.
+      ['log','info','debug','warn','error'].forEach(function (m) {
+        var orig = console[m] ? console[m].bind(console) : function () {};
+        console[m] = function () {
+          var args = Array.prototype.slice.call(arguments);
+          var lvl = (m === 'warn') ? 'warn' : (m === 'error') ? 'error' : 'info';
+          try { append(lvl, args); } catch (e) { /* never blow up the page */ }
+          orig.apply(null, args);
+        };
+      });
+
+      // Uncaught script errors.
+      window.addEventListener('error', function (ev) {
+        append('error', ['window.error', ev.message,
+          ev.filename ? ('@ ' + ev.filename + ':' + ev.lineno + ':' + ev.colno) : '',
+          ev.error || '']);
+      });
+
+      // The reported bug bubbles up here:
+      // "Uncaught (in promise) UNABLE_TO_CONNECT"
+      window.addEventListener('unhandledrejection', function (ev) {
+        var reason = ev.reason;
+        append('error', ['unhandledrejection', reason]);
+      });
+
+      // ESP Web Tools state-machine: hook every <esp-web-install-button>.
+      // The component dispatches 'state-changed' with detail = { state, ... }.
+      function attachToButtons() {
+        var buttons = document.querySelectorAll('esp-web-install-button');
+        buttons.forEach(function (btn, idx) {
+          var label = btn.getAttribute('manifest') || ('button#' + idx);
+          if (btn.dataset.diagBound === '1') return;
+          btn.dataset.diagBound = '1';
+          btn.addEventListener('state-changed', function (ev) {
+            var d = ev.detail || {};
+            // d.state is the high-level phase, d.message a free-text hint,
+            // d.details often carries lower-level info.
+            append('event', ['[' + label + ']', 'state=' + d.state,
+              d.message ? ('message=' + d.message) : '',
+              d.details ? ('details=' + fmt(d.details)) : '']);
+          });
+        });
+      }
+      attachToButtons();
+      // The web component upgrades async; re-attach after a short tick in
+      // case it wasn't defined yet on first sweep.
+      setTimeout(attachToButtons, 250);
+      setTimeout(attachToButtons, 1000);
+
+      // Page-load marker so timestamps are anchored.
+      append('info', ['diag log armed — userAgent:', navigator.userAgent]);
+      append('info', ['secure context:', window.isSecureContext, '· serial API:', ('serial' in navigator)]);
+
+      // Buttons.
+      document.getElementById('diag-clear').addEventListener('click', function () {
+        logEl.textContent = '';
+        t0 = performance.now();
+        append('info', ['log cleared']);
+      });
+      document.getElementById('diag-copy').addEventListener('click', function () {
+        var txt = logEl.innerText;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(
+            function () { append('info', ['log copied to clipboard (' + txt.length + ' chars)']); },
+            function (e) { append('warn', ['clipboard write failed:', e]); }
+          );
+        } else {
+          append('warn', ['clipboard API unavailable — select + Ctrl+C']);
+        }
+      });
     })();
   </script>
 </body>
