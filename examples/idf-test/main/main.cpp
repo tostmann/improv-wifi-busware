@@ -11,6 +11,9 @@
 // protocol so the host-side test script can poll arm state without going
 // through Improv:
 //     "?\n"   -> "STATUS armed=<0|1> ms_left=<N>\n"
+// where ms_left is sourced from improv.windowMsRemaining(now_ms) and is
+// therefore the live countdown the library would also use to expire the
+// window. After expiry the value is 0.
 
 #include <cstdint>
 #include <cstring>
@@ -168,14 +171,12 @@ extern "C" void app_main() {
 
         if (statusPending) {
             // "armed=1 ms_left=N" while window open; "armed=0 ms_left=0" after.
-            // Compute ms_left rough -- we mirror what the lib would compute from
-            // its first tick + windowMs. We don't expose that publicly so instead
-            // we just report armed bool and elapsed-since-boot.
-            const uint32_t boot_ms = now_ms;
+            // ms_left is the live countdown reported by the lib itself, so the
+            // host-side test can cross-check it against its own wall-clock.
             const int len = std::snprintf(statusLine, sizeof(statusLine),
-                "STATUS armed=%d boot_ms=%u\n",
+                "STATUS armed=%d ms_left=%u\n",
                 static_cast<int>(improv.isArmed()),
-                static_cast<unsigned>(boot_ms));
+                static_cast<unsigned>(improv.windowMsRemaining(now_ms)));
             if (len > 0) writeAll(reinterpret_cast<const uint8_t*>(statusLine),
                                   static_cast<size_t>(len));
             statusPending = false;

@@ -12,6 +12,7 @@
 idf_component_register(
     SRCS
         "src/improv_wifi.cpp"
+        "src/serial_filter.cpp"
         "src/backend_idf.cpp"
         "src/backend_arduino.cpp"
         "src/arduino_facade.cpp"

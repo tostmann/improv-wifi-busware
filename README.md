@@ -177,8 +177,17 @@ class ImprovWiFi {
     void feedBytes(const uint8_t* data, size_t n);  // convenience
     void tick(uint32_t nowMs);                      // drive timer + scan
     bool isArmed() const;                           // window still open?
+    uint32_t windowMsRemaining(uint32_t nowMs) const;  // 0 once expired
     bool isConnected();                             // proxy to backend
     void setDeviceInfo(const DeviceInfo& info);
+};
+
+class SerialFilter {  // optional helper, see "Coexisting with a console"
+    using SinkFn = void (*)(const uint8_t* data, size_t len, void* user);
+    void setSinks(SinkFn toConsole, void* consoleUser,
+                  SinkFn toImprov,  void* improvUser);
+    void reset();
+    void feed(const uint8_t* data, size_t len);
 };
 
 struct Config {
@@ -268,6 +277,69 @@ PSK, …) by simply unplugging and re-plugging the device — no factory
 reset, no dedicated button, no console command.
 
 
+## Coexisting with a user-facing console (`SerialFilter`)
+
+Most Busware products expose a CLI / REPL / vendor binary protocol on the
+same serial line that Improv-Serial uses. Naïve "feed every RX byte to
+both Improv and the console" routing is **not enough**: the moment the
+host sends `IMPROV<…>\n`, a line-oriented console will typically reply
+with something like
+
+```
+? (IMPROV<garbage> is unknown)
+```
+
+That reply contains the literal `IMPROV` magic, which then trips up any
+strict Improv parser on the host (ESP Web Tools, `tools/improv_client.py`)
+into trying to decode the noise as a malformed Improv frame. Subsequent
+valid responses from the device are dropped while the host is mid-discard.
+
+The library ships a small reusable state machine that solves this cleanly:
+
+```cpp
+#include <improv_wifi/serial_filter.h>
+
+ipw::SerialFilter   filter;
+ipw::ImprovWiFi     improv{cfg};
+StreamBufferHandle_t lib_rx_buf = xStreamBufferCreate(256, 1);
+
+filter.setSinks(
+    /*toConsole=*/ [](const uint8_t* d, size_t n, void* u) {
+        // forward to your CLI / line-buffer / fntab dispatcher
+        my_console_feed(d, n);
+    },
+    /*consoleUser=*/ nullptr,
+    /*toImprov=*/ [](const uint8_t* d, size_t n, void* u) {
+        xStreamBufferSend(static_cast<StreamBufferHandle_t>(u), d, n, 0);
+    },
+    /*improvUser=*/ lib_rx_buf
+);
+
+// In your transport's RX-task:
+filter.feed(rx_buf, n);
+
+// In a separate Improv-task:
+while (improv.isArmed()) {
+    improv.tick(now_ms());
+    uint8_t buf[64];
+    size_t got = xStreamBufferReceive(lib_rx_buf, buf, sizeof(buf), 100);
+    if (got) improv.feedBytes(buf, got);
+}
+```
+
+The filter routes every byte to exactly one sink:
+
+* bytes that are **not** part of an Improv frame go to the console;
+* bytes that **are** part of a fully-matched Improv frame go to the lib;
+* a stray `I` followed by a non-`M` is held back, then flushed to the
+  console as a single block — so a user who literally types `I<enter>`
+  on the console still sees their `I` echoed normally.
+
+Outside the Improv window, simply stop calling `filter.feed()` (or detach
+the filter from the transport) and the console gets the raw byte stream
+back. Reusing the filter across boots is supported via `reset()`.
+
+
 ## Examples
 
 Two minimal but complete example firmwares ship in `examples/`. Both
@@ -283,8 +355,10 @@ Both:
 - print `hallo from improv-wifi-busware (idf|arduino)` at boot,
 - accept Improv-Serial provisioning during the 120 s window,
 - serve a `<h1>hallo!</h1>` page on port 80 once WiFi is up,
-- and answer a single-character probe (`?`) with `STATUS armed=…` so
-  scripts can verify arm state out-of-band.
+- and answer a single-character probe (`?`) with
+  `STATUS armed=<0|1> ms_left=<N>` so scripts can verify arm state
+  out-of-band. `ms_left` is the live countdown reported by
+  `ImprovWiFi::windowMsRemaining()`; `0` once the window has closed.
 
 Build:
 
@@ -315,6 +389,17 @@ device, no browser needed:
                          --ssid 'MyWiFi' --password 'Secret123'
   ```
 
+  The client opens the port with a DTR/RTS toggle that **resets the
+  device** by default. The very first request after that race usually
+  hits the chip mid-boot and times out. Two ways out:
+
+  - pass `--no-reset` (recommended for repeated calls in a script);
+  - pass `--boot-marker '<your firmware banner>'` so the client waits
+    for a known line before talking. Pick something your firmware
+    deterministically emits late in boot — e.g. CULFW32 prints
+    `improv-serial armed for 120000 ms` exactly when the lib is ready,
+    so `--boot-marker 'improv-serial armed'` is reliable there.
+
 - **`tools/test_lifecycle.py`** — regression test for the bounded-window
   contract. Resets the device, probes Improv at t=5 s and t=70 s
   (expects responses), then probes at t=135 s (expects silence). Total
@@ -324,8 +409,22 @@ device, no browser needed:
   tools/test_lifecycle.py --port /dev/ttyACM0
   ```
 
-Always pass `--port` explicitly. Auto-detect on multi-board lab hosts
-will frequently pick the wrong device.
+- **`tests/test_serial_filter.cpp`** — host-side C++ unit test for the
+  `SerialFilter` state machine. Exercises clean frames, byte-by-byte
+  feed, partial-magic hold-back, the console-echo bug the filter was
+  built to defeat, null sinks, `reset()`, max-len payloads, and stray
+  bytes between frames. No hardware required — runs in milliseconds:
+
+  ```bash
+  g++ -std=c++17 -Wall -Wextra -O2 \
+      -I components/improv_wifi_busware/include \
+      components/improv_wifi_busware/src/serial_filter.cpp \
+      tests/test_serial_filter.cpp \
+      -o /tmp/test_serial_filter && /tmp/test_serial_filter
+  ```
+
+Always pass `--port` explicitly to the on-device scripts. Auto-detect on
+multi-board lab hosts will frequently pick the wrong device.
 
 
 ## Repository layout
@@ -357,6 +456,8 @@ improv-wifi-busware/
 ├── tools/
 │   ├── improv_client.py             host-side Improv-Serial client
 │   └── test_lifecycle.py            regression test for the 120 s contract
+├── tests/
+│   └── test_serial_filter.cpp       host-side unit test for SerialFilter
 ├── html/                            ESP Web Tools landing page
 └── README.md
 ```

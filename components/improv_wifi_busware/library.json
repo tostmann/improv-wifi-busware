@@ -27,6 +27,7 @@
     "srcFilter": [
       "-<*>",
       "+<improv_wifi.cpp>",
+      "+<serial_filter.cpp>",
       "+<backend_arduino.cpp>",
       "+<arduino_facade.cpp>"
     ]

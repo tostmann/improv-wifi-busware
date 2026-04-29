@@ -66,6 +66,23 @@ public:
     // Window state. Once false, stays false until the device reboots.
     bool isArmed() const { return armed_; }
 
+    // Remaining ms in the provisioning window relative to the supplied
+    // monotonic clock (same time base used to feed tick()). Useful for
+    // status-LED blink rates, frontend countdown displays, or log lines
+    // like "Improv idle: 47s remaining".
+    //
+    // Contract:
+    //   - returns 0 once the window has closed (isArmed() == false);
+    //   - returns the full configured windowMs while armed but tick() has
+    //     not yet been called (clock not yet anchored);
+    //   - otherwise returns the live countdown clamped at 0.
+    uint32_t windowMsRemaining(uint32_t nowMs) const {
+        if (!armed_) return 0;
+        if (!clockAnchored_) return cfg_.windowMs;
+        const int32_t delta = static_cast<int32_t>(deadlineMs_ - nowMs);
+        return delta > 0 ? static_cast<uint32_t>(delta) : 0;
+    }
+
     // Convenience proxy to the WiFi backend.
     bool isConnected();
 
