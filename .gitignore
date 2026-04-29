@@ -1,0 +1,26 @@
+# Build artifacts
+build/
+.pio/
+*.pio/
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.a
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# AI agent local state
+CLAUDE.md
+GEMINI.md
+.claudeignore
+.geminignore
+MEMORY.md

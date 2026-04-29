@@ -1,0 +1,28 @@
+{
+  "name": "ImprovWiFiBusware",
+  "version": "0.1.0-wip",
+  "description": "Improv-Serial WiFi provisioning for Busware ESP32 devices. Fork of jnthas/Improv-WiFi-Library with ESP Web Tools compatibility fixes and a bounded post-boot provisioning window.",
+  "keywords": "improv, wifi, esp32, busware, provisioning",
+  "authors": [
+    {
+      "name": "Dirk Tostmann",
+      "email": "tostmann@gmail.com",
+      "maintainer": true
+    },
+    {
+      "name": "Jonathas Amaral Barbosa",
+      "url": "https://github.com/jnthas"
+    }
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tostmann/improv-wifi-busware.git"
+  },
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  }
+}
