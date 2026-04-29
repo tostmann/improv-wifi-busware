@@ -183,11 +183,18 @@ class ImprovClient:
 
         return None
 
-    def wait_for_boot(self, timeout: float = 15.0) -> bool:
-        """Wait for device to boot."""
-        start_time = time.time()
-        boot_marker = b"Starting TUL KNX/IP Gateway"
+    def wait_for_boot(self, timeout: float = 15.0, boot_marker: bytes = b"") -> bool:
+        """Wait for device to boot.
 
+        If boot_marker is empty, returns immediately after a short settle delay
+        (suitable when the firmware does not print a known banner). Otherwise
+        waits up to `timeout` seconds for the marker to appear on the UART.
+        """
+        if not boot_marker:
+            time.sleep(0.5)  # let the device settle after the post-DTR reset
+            return True
+
+        start_time = time.time()
         while time.time() - start_time < timeout:
             try:
                 line = self.ser.readline()
@@ -470,6 +477,9 @@ Examples:
                         help='Validate SSID exists before provisioning (auto-scans first)')
     parser.add_argument('--no-reset', action='store_true',
                         help='Do not reset device on connect')
+    parser.add_argument('--boot-marker', default='',
+                        help='Optional UART byte sequence to wait for after reset '
+                             '(e.g. firmware boot banner). Empty = brief settle delay only.')
 
     args = parser.parse_args()
 
@@ -491,7 +501,8 @@ Examples:
             sys.exit(1)
 
         # Wait for device to boot
-        if not client.wait_for_boot():
+        marker = args.boot_marker.encode('utf-8') if args.boot_marker else b''
+        if not client.wait_for_boot(boot_marker=marker):
             print("[Warning] Device may not have booted properly")
 
         if args.info:

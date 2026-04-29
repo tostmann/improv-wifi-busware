@@ -2,12 +2,27 @@
 build/
 .pio/
 *.pio/
-*.bin
 *.elf
 *.hex
 *.map
 *.o
 *.a
+
+# Built firmware artifacts: ignore by default, but keep the curated factory
+# images that ship with the test landing page in html/firmware/.
+*.bin
+!html/firmware/**/*.bin
+
+# ESP-IDF generated files (regenerated on every build)
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
 
 # Editor / OS
 .vscode/
@@ -18,7 +33,8 @@ build/
 .DS_Store
 Thumbs.db
 
-# AI agent local state
+# AI agent local state -- these are personal/operational notes and must
+# NOT land in the public repo.
 CLAUDE.md
 GEMINI.md
 .claudeignore

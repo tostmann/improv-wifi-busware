@@ -1,0 +1,18 @@
+# ESP32-C6 with USB Serial/JTAG console.
+CONFIG_IDF_TARGET="esp32c6"
+
+# Console primary on USB Serial/JTAG (so prints land where the test script reads).
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED=y
+
+# Quieter logs so the IMPROV stream is clean for the parser.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+CONFIG_LOG_DEFAULT_LEVEL=2
+
+# WiFi: tune for low memory footprint, station-only.
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+
+# We use C++20 in the lib.
+CONFIG_COMPILER_CXX_EXCEPTIONS=n
+CONFIG_COMPILER_CXX_RTTI=n

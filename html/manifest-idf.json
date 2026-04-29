@@ -1,0 +1,14 @@
+{
+  "name": "improv-wifi-busware (ESP-IDF test)",
+  "version": "0.2.0-wip",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C6",
+      "improv": true,
+      "parts": [
+        { "path": "firmware/idf/factory.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

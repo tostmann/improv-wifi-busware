@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>improv-wifi-busware &middot; Test-Installer</title>
+  <script
+    type="module"
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module">
+  </script>
+  <style>
+    :root {
+      --fg:        #1f2933;
+      --fg-soft:   #6b7785;
+      --bg:        #f7f9fc;
+      --card:      #ffffff;
+      --border:    #d8dee7;
+      --accent-a:  #005f87;   /* ESP-IDF colour */
+      --accent-b:  #c97a1c;   /* Arduino colour */
+      --warn-bg:   #fff3cd;
+      --warn-fg:   #664d03;
+      --warn-bd:   #ffe69c;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      padding: 0 1rem;
+    }
+    main {
+      max-width: 720px;
+      margin: 3rem auto 4rem;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.85rem;
+      letter-spacing: -0.01em;
+    }
+    header p {
+      margin: 0;
+      color: var(--fg-soft);
+      font-size: 1rem;
+    }
+    header code {
+      background: #eef1f6;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+      font-size: 0.95em;
+    }
+    .env-strip {
+      margin: 0 0 2rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      display: none;  /* shown by JS once probed */
+    }
+    .env-strip.warn {
+      background: var(--warn-bg);
+      color: var(--warn-fg);
+      border: 1px solid var(--warn-bd);
+      display: block;
+    }
+    .env-strip.ok {
+      background: #d1f0d8;
+      color: #1f5d2c;
+      border: 1px solid #b6e2c1;
+      display: block;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+    @media (min-width: 640px) {
+      .cards { grid-template-columns: 1fr 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+    .card .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      width: fit-content;
+    }
+    .card.idf      .badge { background: #e2eef5; color: var(--accent-a); }
+    .card.arduino  .badge { background: #fbeede; color: var(--accent-b); }
+    .card .desc {
+      color: var(--fg-soft);
+      font-size: 0.92rem;
+      flex-grow: 1;
+    }
+    .card .meta {
+      font-size: 0.78rem;
+      color: var(--fg-soft);
+      border-top: 1px dashed var(--border);
+      padding-top: 0.55rem;
+    }
+    /* Explicit visible "activate" button for the install web-component. */
+    .install-btn {
+      appearance: none;
+      border: 0;
+      cursor: pointer;
+      padding: 0.7rem 1.1rem;
+      border-radius: 7px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      transition: filter 120ms ease;
+    }
+    .install-btn:hover    { filter: brightness(1.06); }
+    .install-btn:active   { filter: brightness(0.94); }
+    .card.idf     .install-btn { background: var(--accent-a); }
+    .card.arduino .install-btn { background: var(--accent-b); }
+    /* Fallback text shown when the browser can't use Web Serial. */
+    .ews-fallback {
+      display: inline-block;
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      background: var(--warn-bg);
+      color: var(--warn-fg);
+      font-size: 0.85rem;
+      border: 1px solid var(--warn-bd);
+    }
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      color: var(--fg-soft);
+      font-size: 0.82rem;
+    }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>improv-wifi-busware &middot; Test-Installer</h1>
+      <p>
+        Zwei Test-Firmwares fuer den ESP32-C6, gebaut gegen das gleiche
+        <code>improv-wifi-busware</code>-Quellenrepository &mdash; einmal
+        unter ESP-IDF und einmal unter Arduino-Core. Beide stellen die
+        Improv-Serial-Provisionierung bereit (120 s Fenster nach Boot)
+        und melden sich nach dem Connect mit einem freundlichen
+        <code>hallo!</code> auf Port 80.
+      </p>
+    </header>
+
+    <div id="env-strip" class="env-strip"></div>
+
+    <section class="cards">
+      <div class="card idf">
+        <span class="badge">ESP-IDF</span>
+        <h2>improv-wifi-busware (idf-test)</h2>
+        <p class="desc">
+          Pure ESP-IDF, <code>esp_wifi_*</code>-Backend. Das ist der Pfad,
+          den CULFW32 spaeter nutzt.
+        </p>
+        <esp-web-install-button manifest="manifest-idf.json">
+          <button slot="activate" class="install-btn">
+            Installieren (ESP-IDF)
+          </button>
+          <span slot="unsupported" class="ews-fallback">
+            Dieser Browser kann kein Web-Serial &mdash; nimm Chrome, Edge oder Opera.
+          </span>
+          <span slot="not-allowed" class="ews-fallback">
+            Web-Serial geht nur ueber HTTPS oder <code>http://localhost</code>.
+          </span>
+        </esp-web-install-button>
+        <p class="meta">
+          ESP32-C6 &middot; v0.2.0-wip &middot; factory.bin via
+          <code>esptool merge-bin</code>
+        </p>
+      </div>
+
+      <div class="card arduino">
+        <span class="badge">Arduino-Core</span>
+        <h2>improv-wifi-busware (arduino-test)</h2>
+        <p class="desc">
+          Arduino-Core auf ESP32-C6, <code>WiFi.h</code>-Backend &uuml;ber
+          die Legacy-Facade. Das ist der Pfad, den ip4knx nach der
+          Migration nutzt.
+        </p>
+        <esp-web-install-button manifest="manifest-arduino.json">
+          <button slot="activate" class="install-btn">
+            Installieren (Arduino-Core)
+          </button>
+          <span slot="unsupported" class="ews-fallback">
+            Dieser Browser kann kein Web-Serial &mdash; nimm Chrome, Edge oder Opera.
+          </span>
+          <span slot="not-allowed" class="ews-fallback">
+            Web-Serial geht nur ueber HTTPS oder <code>http://localhost</code>.
+          </span>
+        </esp-web-install-button>
+        <p class="meta">
+          ESP32-C6 &middot; v0.2.0-wip &middot; factory.bin via
+          <code>esptool merge-bin</code>
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      Quelle: <a href="https://github.com/tostmann/improv-wifi-busware">tostmann/improv-wifi-busware</a>
+    </footer>
+  </main>
+
+  <script>
+    // Tell the user up-front whether their environment can drive Web-Serial.
+    // Avoids the "I see no buttons, why?" moment.
+    (function () {
+      var strip = document.getElementById('env-strip');
+      if (!strip) return;
+
+      var hasSerial = ('serial' in navigator);
+      var isSecure  = (window.isSecureContext === true);
+
+      if (hasSerial && isSecure) {
+        strip.classList.add('ok');
+        strip.textContent = 'Web-Serial-API verfuegbar und sichere Quelle ' +
+          '(' + window.location.protocol + ') &mdash; Install-Buttons sind aktiv.';
+        // Replace the &mdash; entity that textContent doesn't decode.
+        strip.innerHTML = strip.textContent.replace('&mdash;', '—');
+      } else {
+        strip.classList.add('warn');
+        var why = [];
+        if (!hasSerial) {
+          why.push('Browser unterstuetzt die Web-Serial-API nicht ' +
+                   '(Chrome/Edge/Opera noetig).');
+        }
+        if (!isSecure) {
+          why.push('Seite laeuft nicht in einem sicheren Kontext: ' +
+                   'Web-Serial verlangt HTTPS oder http://localhost ' +
+                   '(aktuell: ' + window.location.protocol + ' auf ' +
+                   window.location.hostname + ').');
+        }
+        strip.innerHTML = '<strong>Hinweis:</strong> ' + why.join(' ');
+      }
+    })();
+  </script>
+</body>
+</html>

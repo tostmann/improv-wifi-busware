@@ -1,172 +1,113 @@
 #pragma once
 
-#ifndef IMPROV_RUN_FOR
-#define IMPROV_RUN_FOR 60000
-#endif
+// Legacy-compat header for the Arduino consumer surface that jnthas's
+// upstream and ip4knx's main.cpp use:
+//
+//   #include "ImprovWiFiLibrary.h"
+//   ImprovWiFi improvSerial(&Serial);
+//   improvSerial.setDeviceInfo(...);
+//   improvSerial.onImprovConnected(...);
+//   improvSerial.onImprovError(...);
+//   improvSerial.handleSerial();
+//
+// New code (CULFW32, future Busware projects) should bypass this header and
+// use the transport-neutral core directly via <improv_wifi/improv_wifi.h>.
+//
+// Only effective when building under the Arduino framework. On pure ESP-IDF
+// (CULFW32) including this header is a no-op so accidental inclusion does
+// not pull Arduino-Core symbols into the build.
 
-#if defined(ARDUINO_ARCH_ESP8266)
-  #include <ESP8266WiFi.h>
-  #define WIFI_OPEN ENC_TYPE_NONE
-#elif defined(ARDUINO_ARCH_ESP32)
-  #include <WiFi.h>
-  #define WIFI_OPEN WIFI_AUTH_OPEN
-#endif
-
-#include <Stream.h>
 #include "ImprovTypes.h"
+#include "improv_wifi/improv_wifi.h"
 
 #ifdef ARDUINO
-  #include <Arduino.h>
+
+#include <Arduino.h>
+#include <Stream.h>
+
+#include "improv_wifi/arduino_backend.h"
+
+// Default window length for the legacy IMPROV_RUN_FOR macro. The lib's
+// internal default is 120 s; this macro can still override it for backward
+// compatibility with vendored ip4knx code that set IMPROV_RUN_FOR explicitly.
+#ifndef IMPROV_RUN_FOR
+  #define IMPROV_RUN_FOR 120000
 #endif
 
-/**
- * Improv WiFi class
- *
- * ### Description
- *
- * Handles the Improv WiFi Serial protocol (https://www.improv-wifi.com/serial/)
- *
- * ### Example
- *
- * Simple example of using ImprovWiFi lib. A complete one can be seen in `examples/` folder.
- *
- * ```cpp
- * #include <ImprovWiFiLibrary.h>
- *
- * ImprovWiFi improvSerial(&Serial);
- *
- * void setup() {
- *   improvSerial.setDeviceInfo(ImprovTypes::ChipFamily::CF_ESP32, "My-Device-9a4c2b", "2.1.5", "My Device");
- * }
- *
- * void loop() {
- *   improvSerial.handleSerial();
- * }
- * ```
- *
- */
-class ImprovWiFi
-{
-private:
-  const char *const CHIP_FAMILY_DESC[6] = {"ESP32", "ESP32-C3", "ESP32-S2", "ESP32-S3", "ESP32-C6", "ESP8266"};
-  ImprovTypes::ImprovWiFiParamsStruct improvWiFiParams;
-
-  uint8_t  _buffer[128];
-  uint8_t  _position = 0;
-  uint32_t _stopme   = 0;
-
-  Stream *serial;
-
-  void sendDeviceUrl(ImprovTypes::Command cmd);
-  bool onCommandCallback(ImprovTypes::ImprovCommand cmd);
-  void onErrorCallback(ImprovTypes::Error err);
-  void setState(ImprovTypes::State state);
-  void sendResponse(std::vector<uint8_t> &response);
-  void setError(ImprovTypes::Error error);
-  void getAvailableWifiNetworks();
-  std::string getSecurityTypeString(uint8_t encryptionType);
-  inline void replaceAll(std::string &str, const std::string &from, const std::string &to);
-
-  // improv SDK
-  bool parseImprovSerial(size_t position, uint8_t byte, const uint8_t *buffer);
-  ImprovTypes::ImprovCommand parseImprovData(const std::vector<uint8_t> &data, bool check_checksum = true);
-  ImprovTypes::ImprovCommand parseImprovData(const uint8_t *data, size_t length, bool check_checksum = true);
-  std::vector<uint8_t> build_rpc_response(ImprovTypes::Command command, const std::vector<std::string> &datum, bool add_checksum);
-
+class ImprovWiFi {
 public:
-  /**
-   * ## Constructors
-   **/
+    typedef void(OnImprovError)(ImprovTypes::Error);
+    typedef void(OnImprovConnected)(const char* ssid, const char* password);
+    typedef bool(CustomConnectWiFi)(const char* ssid, const char* password);
 
-  /**
-   * Create an instance of ImprovWiFi
-   *
-   * # Parameters
-   *
-   * - `serial` - Pointer to stream object used to handle requests, for the most cases use `Serial`
-   */
-  ImprovWiFi(Stream *serial)
-  {
-    this->serial  = serial;
-    this->_stopme = millis() + IMPROV_RUN_FOR;
-  }
+    explicit ImprovWiFi(Stream* serial)
+        : serial_(serial), backend_(),
+          core_(makeConfig_(this)) {}
 
-  /**
-   * ## Type definition
-   */
+    // --- Original public API ------------------------------------------------
+    void handleSerial();
+    bool handleBuffer(uint8_t* buffer, uint16_t bytes);
 
-  /**
-   * Callback function called when any error occurs during the protocol handling or wifi connection.
-   */
-  typedef void(OnImprovError)(ImprovTypes::Error);
+    void setDeviceInfo(ImprovTypes::ChipFamily chipFamily,
+                       const char* firmwareName,
+                       const char* firmwareVersion,
+                       const char* deviceName);
+    void setDeviceInfo(ImprovTypes::ChipFamily chipFamily,
+                       const char* firmwareName,
+                       const char* firmwareVersion,
+                       const char* deviceName,
+                       const char* deviceUrl);
 
-  /**
-   * Callback function called when the attempt of wifi connection is successful. It informs the SSID and Password used to that, it's a perfect time to save them for further use.
-   */
-  typedef void(OnImprovConnected)(const char *ssid, const char *password);
+    void onImprovError(OnImprovError* cb)         { onErrorCb_     = cb; }
+    void onImprovConnected(OnImprovConnected* cb) { onConnectedCb_ = cb; }
+    void setCustomConnectWiFi(CustomConnectWiFi* cb) { customConnectCb_ = cb; }
 
-  /**
-   * Callback function to customize the wifi connection if you needed. Optional.
-   */
-  typedef bool(CustomConnectWiFi)(const char *ssid, const char *password);
-
-  /**
-   * ## Methods
-   **/
-
-  /**
-   * Check if a communication via serial is happening. Put this call on your loop().
-   *
-   */
-  void handleSerial();
-  bool handleBuffer(uint8_t *buffer, uint16_t bytes);
-
-  /**
-   * Set details of your device.
-   *
-   * # Parameters
-   *
-   * - `chipFamily` - Chip variant, supported are CF_ESP32, CF_ESP32_C3, CF_ESP32_S2, CF_ESP32_S3, CF_ESP8266. Consult ESP Home [docs](https://esphome.io/components/esp32.html) for more information.
-   * - `firmwareName` - Firmware name
-   * - `firmwareVersion` - Firmware version
-   * - `deviceName` - Your device name
-   * - `deviceUrl`- The local URL to access your device. A placeholder called {LOCAL_IPV4} is available to form elaboreted URLs. E.g. `http://{LOCAL_IPV4}?name=Guest`.
-   *   There is overloaded method without `deviceUrl`, in this case the URL will be the local IP.
-   *
-   */
-  void setDeviceInfo(ImprovTypes::ChipFamily chipFamily, const char *firmwareName, const char *firmwareVersion, const char *deviceName, const char *deviceUrl);
-  void setDeviceInfo(ImprovTypes::ChipFamily chipFamily, const char *firmwareName, const char *firmwareVersion, const char *deviceName);
-
-  /**
-   * Method to set the typedef OnImprovError callback.
-   */
-  void onImprovError(OnImprovError *errorCallback);
-
-  /**
-   * Method to set the typedef OnImprovConnected callback.
-   */
-  void onImprovConnected(OnImprovConnected *connectedCallback);
-
-  /**
-   * Method to set the typedef CustomConnectWiFi callback.
-   */
-  void setCustomConnectWiFi(CustomConnectWiFi *connectWiFiCallBack);
-
-  /**
-   * Default method to connect in a WiFi network.
-   * It waits `DELAY_MS_WAIT_WIFI_CONNECTION` milliseconds (default 500) during `MAX_ATTEMPTS_WIFI_CONNECTION` (default 20) until it get connected. If it does not happen, an error `ERROR_UNABLE_TO_CONNECT` is thrown.
-   *
-   */
-  bool tryConnectToWifi(const char *ssid, const char *password);
-
-  /**
-   * Check if connection is established using `WiFi.status() == WL_CONNECTED`
-   *
-   */
-  bool isConnected();
+    bool tryConnectToWifi(const char* ssid, const char* password);
+    bool isConnected();
 
 private:
-  OnImprovError *onImproErrorCallback;
-  OnImprovConnected *onImprovConnectedCallback;
-  CustomConnectWiFi *customConnectWiFiCallback;
+    static improv_wifi_busware::Config makeConfig_(ImprovWiFi* self);
+    static void  writeTrampoline_(const uint8_t* d, size_t n, void* user);
+    static void  errorTrampoline_(improv_wifi_busware::Error e, void* user);
+    static void  connectTrampoline_(const char* s, const char* p, void* user);
+
+    // Custom connect indirection -- if the user installed a CustomConnectWiFi
+    // we have to wrap the WiFiBackend. Simplest way: keep using the default
+    // ArduinoWiFiBackend, and short-circuit tryConnect() inside this facade
+    // when customConnectCb_ is set.
+    class WrappedBackend : public improv_wifi_busware::WiFiBackend {
+    public:
+        WrappedBackend() = default;
+        void bind(ImprovWiFi* parent) { parent_ = parent; }
+        bool isConnected() override            { return inner_.isConnected(); }
+        std::string currentIp() override       { return inner_.currentIp(); }
+        bool tryConnect(const char* s, const char* p) override {
+            if (parent_ && parent_->customConnectCb_) return parent_->customConnectCb_(s, p);
+            return inner_.tryConnect(s, p);
+        }
+        void startScan() override              { inner_.startScan(); }
+        int  scanResult() override             { return inner_.scanResult(); }
+        improv_wifi_busware::ApRecord apRecord(int i) override { return inner_.apRecord(i); }
+        void clearScan() override              { inner_.clearScan(); }
+    private:
+        improv_wifi_busware::ArduinoWiFiBackend inner_{};
+        ImprovWiFi* parent_ = nullptr;
+    };
+
+    Stream*                              serial_           = nullptr;
+    WrappedBackend                       backend_{};
+    improv_wifi_busware::ImprovWiFi      core_;
+
+    OnImprovError*       onErrorCb_       = nullptr;
+    OnImprovConnected*   onConnectedCb_   = nullptr;
+    CustomConnectWiFi*   customConnectCb_ = nullptr;
+
+    // Storage for device-info strings so ChipFamily/string lifetime is owned
+    // by the facade, not the caller's stack.
+    std::string firmwareName_;
+    std::string firmwareVersion_;
+    std::string deviceName_;
+    std::string deviceUrl_;
 };
+
+#endif  // ARDUINO
