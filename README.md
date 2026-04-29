@@ -68,6 +68,24 @@ PlatformIO auto-discovers `library.json` inside the component directory.
 
 Drop `components/improv_wifi_busware/` into your `libraries/` folder.
 
+## Testing
+
+`tools/improv_client.py` is a host-side reference client implementing the
+Improv-Serial protocol in Python. Use it to exercise a flashed device
+without involving a browser or ESP Web Tools:
+
+```bash
+tools/improv_client.py --info                                # device info
+tools/improv_client.py --scan                                # trigger WiFi scan
+tools/improv_client.py --ssid 'MyWiFi' --password 'Secret123'  # provision
+tools/improv_client.py --validate --ssid 'MyWiFi' --password 'Secret123'
+```
+
+The port is auto-detected (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/cu.usb*`)
+or can be set with `--port`. This is the same script that ships in
+`tostmann/ip4knx/scripts/test_improv.py`; copied here so the library can
+be exercised standalone.
+
 ## Credits
 
 Built on top of [jnthas/Improv-WiFi-Library](https://github.com/jnthas/Improv-WiFi-Library)
