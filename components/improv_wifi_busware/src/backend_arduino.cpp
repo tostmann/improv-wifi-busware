@@ -2,6 +2,8 @@
 
 #include "improv_wifi/arduino_backend.h"
 
+#include <cstring>
+
 #include <Arduino.h>
 
 #if defined(ARDUINO_ARCH_ESP8266)
@@ -39,7 +41,48 @@ bool ArduinoWiFiBackend::tryConnect(const char* ssid, const char* password) {
         WiFi.disconnect();
         delay(100);
     }
-    WiFi.begin(ssid, password ? password : "");
+
+    // When connectToStrongest is set, pre-scan synchronously and pick the
+    // strongest matching BSSID. Falls back to plain WiFi.begin(ssid,pw) when
+    // the pre-scan finds nothing -- the AP could be hidden, just out of range
+    // for that scan, or busy. Better to try the bare connect than to fail
+    // outright because the scan didn't see what the user typed.
+    int32_t       bestChannel = 0;
+    const uint8_t* bestBssid  = nullptr;
+    uint8_t       bssidBuf[6] = {0, 0, 0, 0, 0, 0};
+    if (opts_.connectToStrongest) {
+        if (scanInFlight_) {
+            WiFi.scanDelete();
+            scanInFlight_ = false;
+        }
+        const int n = WiFi.scanNetworks(/*async=*/false, /*show_hidden=*/false);
+        int32_t bestRssi = -127;
+        int     bestIdx  = -1;
+        for (int i = 0; i < n; ++i) {
+            if (WiFi.SSID(i) == ssid) {
+                const int32_t r = WiFi.RSSI(i);
+                if (r > bestRssi) {
+                    bestRssi = r;
+                    bestIdx  = i;
+                }
+            }
+        }
+        if (bestIdx >= 0) {
+            bestChannel = WiFi.channel(bestIdx);
+            const uint8_t* b = WiFi.BSSID(bestIdx);
+            if (b) {
+                memcpy(bssidBuf, b, 6);
+                bestBssid = bssidBuf;
+            }
+        }
+        WiFi.scanDelete();
+    }
+
+    if (bestBssid) {
+        WiFi.begin(ssid, password ? password : "", bestChannel, bestBssid);
+    } else {
+        WiFi.begin(ssid, password ? password : "");
+    }
 
     const uint32_t deadline = millis() + opts_.connectTimeoutMs;
     while (millis() < deadline) {

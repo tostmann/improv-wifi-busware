@@ -16,6 +16,13 @@ public:
     struct Options {
         uint32_t connectTimeoutMs = 12'000;
         uint32_t connectPollMs    = 250;
+        // Pre-scan synchronously before WiFi.begin() and pass the strongest
+        // matching BSSID + channel explicitly. Costs an extra ~3-5 s for the
+        // synchronous scan but avoids the Arduino-Core driver picking the
+        // first BSSID it happens to see when several share the SSID. Default
+        // on for symmetry with EspIdfWiFiBackend; flip off when the provision
+        // budget is tight.
+        bool     connectToStrongest = true;
     };
 
     ArduinoWiFiBackend();

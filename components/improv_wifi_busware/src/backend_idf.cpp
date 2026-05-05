@@ -156,6 +156,13 @@ bool EspIdfWiFiBackend::tryConnect(const char* ssid, const char* password) {
     }
     wcfg.sta.pmf_cfg.capable  = true;
     wcfg.sta.pmf_cfg.required = false;
+    if (opts_.connectToStrongest) {
+        // Make the WiFi driver scan all channels before associating and pick
+        // the strongest matching BSSID. Without this, the IDF default is
+        // WIFI_FAST_SCAN, which connects to the *first* matching BSSID seen.
+        wcfg.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+        wcfg.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    }
 
     // Drop any previous association cleanly. We zero connecting_ FIRST so the
     // STA_DISCONNECTED event that the WiFi driver fires for the old link does

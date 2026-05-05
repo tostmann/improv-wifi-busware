@@ -28,6 +28,13 @@ public:
         // Total scan listening time (ESP-IDF default ~120 ms per channel × N).
         // Leave 0 to use the IDF defaults.
         uint32_t maxScanTimeMs    = 0;
+        // When multiple BSSIDs share the SSID we provision against, pick the
+        // strongest one (WIFI_ALL_CHANNEL_SCAN + WIFI_CONNECT_AP_BY_SIGNAL).
+        // Costs ~1-2 s of all-channel scan per connect attempt; cheap for a
+        // one-shot provisioning step, painful as a hot path. Default on
+        // because the typical provisioning environment has multi-AP coverage
+        // and "first BSSID found" is rarely what the user wanted.
+        bool     connectToStrongest = true;
     };
 
     EspIdfWiFiBackend();
