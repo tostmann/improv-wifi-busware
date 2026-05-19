@@ -40,3 +40,18 @@ GEMINI.md
 .claudeignore
 .geminignore
 MEMORY.md
+
+# NIEMALS in Git (projekt-übergreifende Regel, 2026-05-19):
+# Agent-Guidance, interne Notizen, Secrets, Logs, fremde Datenblätter
+# und urheberrechtlich geschützte Schematics dürfen weder lokal noch
+# auf einem Remote landen.
+FACTS.md
+HARDWARE_STATUS.md
+.env
+.env.*
+*.key
+*.pem
+*.log
+schematics/
+datasheets/
+datasheet/
