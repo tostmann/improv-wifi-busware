@@ -79,7 +79,14 @@ bool ArduinoWiFiBackend::tryConnect(const char* ssid, const char* password) {
     }
 
     if (bestBssid) {
-        WiFi.begin(ssid, password ? password : "", bestChannel, bestBssid);
+        // channel arg intentionally 0, NOT bestChannel: keep the BSSID pin but do
+        // not force a channel-set. An explicit channel in WiFi.begin() while a SoftAP
+        // is up (AP_STA -- the captive/improv window) corrupts the WPA2 4-way handshake
+        // -> WIFI_REASON_MIC_FAILURE (reason 14), connect never completes. ch=0 lets the
+        // STA settle the channel via association and the SoftAP follows. Verified on
+        // ESP32-C3: with bestChannel it fails reason-14, with 0 it connects.
+        (void)bestChannel;
+        WiFi.begin(ssid, password ? password : "", 0, bestBssid);
     } else {
         WiFi.begin(ssid, password ? password : "");
     }
