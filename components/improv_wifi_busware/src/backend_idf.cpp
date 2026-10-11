@@ -92,6 +92,11 @@ void EspIdfWiFiBackend::onWifiEvent_(int32_t id, void* data) {
             if (connecting_) connectFailed_ = true;
             break;
         case WIFI_EVENT_SCAN_DONE: {
+            // Only collect the results of a scan startScan() is waiting for.
+            // esp_wifi_scan_get_ap_records() hands out the driver's list once
+            // and frees it; taking it for a scan the host application started
+            // left the application with an empty list.
+            if (!scanRunning_.load()) break;
             scanRunning_ = false;
             uint16_t apCount = 0;
             if (esp_wifi_scan_get_ap_num(&apCount) == ESP_OK && apCount > 0) {
