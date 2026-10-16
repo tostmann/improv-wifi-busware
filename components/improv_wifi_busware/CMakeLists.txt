@@ -16,9 +16,11 @@ idf_component_register(
         "src/backend_idf.cpp"
         "src/backend_arduino.cpp"
         "src/arduino_facade.cpp"
+        "src/usb_reset_guard.cpp"
     INCLUDE_DIRS
         "include"
     REQUIRES
+        app_update
         esp_wifi
         esp_event
         esp_netif

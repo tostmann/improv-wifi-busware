@@ -277,6 +277,34 @@ PSK, …) by simply unplugging and re-plugging the device — no factory
 reset, no dedicated button, no console command.
 
 
+## USB reset guard (ESP32-C6)
+
+Separate from Improv itself, but on the same path: flashing a chip with a
+USB-Serial-JTAG port ends with a hard reset over that port, and Improv
+follows right after.  Such a reset is a core reset that does not reset the
+modem subsystem.  On the ESP32-C6 the Wi-Fi station afterwards found no
+access point in about 8 % of these resets and stayed deaf until the next
+restart; a software restart cured it.
+
+```c
+#include "busware/usb_reset_guard.h"
+
+void app_main(void)          // or setup()
+{
+    busware_usb_reset_guard();   // first statement, before Wi-Fi starts
+    ...
+}
+```
+
+After a USB reset the guard restarts the chip once by software (about
+0.3 s), except while an OTA image awaits its confirmation.
+`busware_usb_reset_guard_was_usb()` tells the restarted firmware that the
+original reset came over USB.  On by default for the ESP32-C6 only; other
+targets with USB-Serial-JTAG enable it with Kconfig
+`BUSWARE_USB_RESET_GUARD` (ESP-IDF) or `-DBUSWARE_USB_RESET_GUARD=1`
+(Arduino).  Without USB-Serial-JTAG, and on the ESP8266, it does nothing.
+
+
 ## Coexisting with a user-facing console (`SerialFilter`)
 
 Most Busware products expose a CLI / REPL / vendor binary protocol on the

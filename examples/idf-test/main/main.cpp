@@ -27,6 +27,7 @@
 #include "nvs_flash.h"
 #include "driver/usb_serial_jtag.h"
 
+#include "busware/usb_reset_guard.h"
 #include "improv_wifi/improv_wifi.h"
 #include "improv_wifi/idf_backend.h"
 
@@ -94,6 +95,8 @@ static void onConnected(const char* ssid, const char* /*pw*/, void* /*user*/) {
 }
 
 extern "C" void app_main() {
+    busware_usb_reset_guard();      // first, before Wi-Fi starts (ESP32-C6)
+
     // NVS is required by esp_wifi_init().
     esp_err_t er = nvs_flash_init();
     if (er == ESP_ERR_NVS_NO_FREE_PAGES || er == ESP_ERR_NVS_NEW_VERSION_FOUND) {

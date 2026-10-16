@@ -12,6 +12,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "ImprovWiFiLibrary.h"
+#include "busware/usb_reset_guard.h"
 
 static ImprovWiFi improvSerial(&Serial);
 static WebServer  greeter(80);
@@ -54,6 +55,7 @@ static void onError(ImprovTypes::Error err) {
 }
 
 void setup() {
+    busware_usb_reset_guard();      // first, before Wi-Fi starts (ESP32-C6)
     Serial.begin(115200);
     delay(200);
     Serial.println("hallo from improv-wifi-busware (arduino)");

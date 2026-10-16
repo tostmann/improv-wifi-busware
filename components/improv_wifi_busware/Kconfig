@@ -1,0 +1,18 @@
+menu "busware USB reset guard"
+
+    config BUSWARE_USB_RESET_GUARD
+        bool "Restart once by software after a reset over the USB-Serial-JTAG port"
+        depends on SOC_USB_SERIAL_JTAG_SUPPORTED
+        default y if IDF_TARGET_ESP32C6
+        default n
+        help
+            A reset over the USB-Serial-JTAG port (a terminal or flasher
+            toggling DTR/RTS) is a core reset that does not reset the modem
+            subsystem.  On the ESP32-C6 the Wi-Fi station afterwards found no
+            access point in about 8 % of such resets until the next restart.
+            With this option busware_usb_reset_guard(), called first in
+            app_main(), restarts the chip once by software after such a
+            reset (not while an OTA image awaits confirmation).  On by
+            default on the ESP32-C6, where it was measured.
+
+endmenu
